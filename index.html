@@ -126,6 +126,11 @@ button.row:active{background:var(--tint)}
 .addrow input{flex:1;min-width:0;background:var(--bg);border:1.5px solid var(--line);border-radius:10px;padding:10px 12px}
 textarea#sharebox{width:100%;background:var(--surface);border:1.5px solid var(--line);border-radius:10px;padding:10px;font-size:.9rem}
 
+.payrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;padding:12px 14px}
+.payrow .op{display:block;font-size:.85rem;color:var(--muted)}
+.payrow .num{display:block;font-weight:700;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.sect{font-family:var(--f-display);font-weight:800;font-size:1.1rem}
+
 /* Toast */
 #toast{position:fixed;left:0;right:0;bottom:0;padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px));display:flex;justify-content:center;pointer-events:none;opacity:0;transition:opacity .2s}
 #toast.show{opacity:1}
@@ -146,6 +151,8 @@ body{margin:0;padding-block:calc(20px + env(safe-area-inset-top,0px)) calc(56px 
 'use strict';
 var KEY='carnet-tontine-v1';
 var FREQ={semaine:'par semaine',quinzaine:'toutes les 2 semaines',mois:'par mois'};
+var OPS=[['wave','Wave'],['orange','Orange Money'],['mtn','MTN MoMo'],['moov','Moov Money']];
+function payList(t){var p=t.pay||{};return OPS.filter(function(o){return p[o[0]];}).map(function(o){return {key:o[0],name:o[1],num:p[o[0]]};});}
 var MONEY=new Intl.NumberFormat('fr-FR');
 function fmt(n){return MONEY.format(n)+' FCFA';}
 function pl(n,s,p){return n+' '+(n>1?p:s);}
@@ -242,12 +249,26 @@ function tourHTML(t){
       +'<span><span class="name">'+esc(m.name)+(i===r?' <span class="tag">Reçoit</span>':'')+'</span><span class="sub2">'+fmt(t.amount)+'</span></span>'
       +(ok?'<span class="chip good">Payé</span>':'<span class="chip ghost">À payer</span>')+'</button>';
   }).join('')+'</div>';
+  h+=payHTML(t);
   h+='<div class="actions"><button class="btn" data-act="share">Copier le point pour WhatsApp</button>';
   if(rest>0){h+='<button class="btn primary" disabled>Clôturer le tour</button></div><p class="hint">Le tour se clôture quand tout le monde a payé.</p>';}
   else if(!ui.cd){h+='<button class="btn primary" data-act="close">Clôturer le tour</button></div>';}
   else{h+='</div><div class="actions"><button class="btn primary" data-act="closeyes">Oui, remettre '+fmt(pot)+' à '+esc(ben.name)+'</button><button class="btn" data-act="closeno">Annuler</button></div>';}
   if(ui.shareText){h+='<textarea id="sharebox" readonly rows="6">'+esc(ui.shareText)+'</textarea><p class="hint">Sélectionne le texte et copie-le.</p>';}
   return h;
+}
+function payHTML(t){
+  var l=payList(t);
+  if(!l.length){return '<p class="hint">Aucun numéro enregistré pour recevoir les cotisations. <button class="btn sm" data-act="tab" data-v="mem">Ajouter mes numéros</button></p>';}
+  return '<h2 class="sect">Où envoyer l’argent</h2><ul class="list">'+l.map(function(x){
+    return '<li class="payrow"><span><span class="op">'+esc(x.name)+'</span><span class="num">'+esc(x.num)+'</span></span><button class="btn sm" data-act="copynum" data-num="'+esc(x.num)+'" data-op="'+esc(x.name)+'">Copier</button></li>';
+  }).join('')+'</ul>';
+}
+function payFormHTML(t){
+  var p=t.pay||{};
+  return '<form id="payform" class="card form"><h2>Recevoir les cotisations</h2><p class="hint">Entre le numéro où les membres envoient leur cotisation, pour chaque opérateur que tu utilises. Laisse vide les autres.</p>'
+    +OPS.map(function(o){return '<label for="p-'+o[0]+'">'+o[1]+'</label><input id="p-'+o[0]+'" type="tel" inputmode="tel" maxlength="20" placeholder="Ex. 07 00 00 00 00" value="'+esc(p[o[0]]||'')+'">';}).join('')
+    +'<p id="payerr" class="err" role="alert"></p><div class="actions"><button class="btn primary" type="submit">Enregistrer les numéros</button></div></form>';
 }
 function finishedHTML(t){
   var n=t.members.length;
@@ -282,6 +303,7 @@ function memHTML(t){
   }).join('')+'</ul>';
   if(locked){h+='<p class="hint">La tontine a commencé : la liste est verrouillée pour que la cagnotte reste juste pour tous.</p>';}
   else{h+='<form id="addform" class="addrow"><input id="addname" placeholder="Prénom du nouveau membre" aria-label="Prénom du nouveau membre" maxlength="40"><button class="btn primary sm" type="submit">Ajouter</button></form>';}
+  h+=payFormHTML(t);
   h+='<div class="actions">';
   if(!ui.dd){h+='<button class="btn danger" data-act="del">Supprimer cette tontine</button>';}
   else{h+='<button class="btn danger" data-act="delyes">Oui, supprimer « '+esc(t.name)+' »</button><button class="btn" data-act="delno">Annuler</button>';}
@@ -322,10 +344,12 @@ function shareText(t){
     'Cagnotte : '+fmt(t.amount*n)+' pour '+t.members[r].name,
     'Payé : '+(ok.length?ok.join(', '):'personne pour le moment')];
   l.push(no.length?'Reste à payer ('+fmt(t.amount)+' chacun) : '+no.join(', '):'Tout le monde a payé. Merci !');
+  var pl2=payList(t);
+  if(pl2.length){l.push('Où payer : '+pl2.map(function(x){return x.name+' '+x.num;}).join(' · '));}
   return l.join('\n');
 }
-function copy(text){
-  function done(){ui.shareText='';toast('Copié. Colle le texte dans WhatsApp.');render();}
+function copy(text,msg){
+  function done(){ui.shareText='';toast(msg||'Copié. Colle le texte dans WhatsApp.');render();}
   function fallback(){
     var ok=false,ta=document.createElement('textarea');
     ta.value=text;ta.setAttribute('readonly','');ta.style.cssText='position:fixed;top:0;opacity:0';
@@ -355,6 +379,7 @@ document.addEventListener('click',function(e){
     ui.cd=false;
   }
   else if(act==='share'){copy(shareText(t));return;}
+  else if(act==='copynum'){copy(el.getAttribute('data-num'),'Numéro '+el.getAttribute('data-op')+' copié.');return;}
   else if(act==='close'){ui.cd=true;}
   else if(act==='closeno'){ui.cd=false;}
   else if(act==='closeyes'){
@@ -394,6 +419,16 @@ document.addEventListener('submit',function(e){
     if(!t||!v||isLocked(t))return;
     if(t.members.length>=40){toast('40 membres au maximum.');return;}
     t.members.push({id:uid(),name:v});ui.focusAdd=true;save();render();return;
+  }
+  if(f.id==='payform'){
+    var tp=T();if(!tp)return;
+    var out={},errp=document.getElementById('payerr');
+    for(var k=0;k<OPS.length;k++){
+      var v2=document.getElementById('p-'+OPS[k][0]).value.replace(/[^0-9+ \-]/g,'').trim();
+      if(v2&&v2.replace(/\D/g,'').length<8){errp.textContent='Numéro trop court pour '+OPS[k][1]+'.';return;}
+      if(v2){out[OPS[k][0]]=v2;}
+    }
+    tp.pay=out;save();toast('Numéros enregistrés.');render();return;
   }
   if(f.id==='newform'){
     var name=document.getElementById('f-name').value.trim();

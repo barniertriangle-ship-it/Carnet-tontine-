@@ -1,5 +1,5 @@
 /* Service worker : le carnet reste utilisable sans connexion. */
-var CACHE = 'carnet-tontine-v1';
+var CACHE = 'carnet-tontine-v2';
 var ASSETS = ['./', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', function (e) {
